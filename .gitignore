@@ -21,3 +21,5 @@
 vendor/
 .idea/
 .vscode/
+.codex/
+.env
