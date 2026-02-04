@@ -16,3 +16,6 @@ redis:
 metrics:
   enabled: true
   path: /metrics
+
+migrations:
+  auto: true
