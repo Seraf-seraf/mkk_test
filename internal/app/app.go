@@ -3,26 +3,20 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"log/slog"
-	"net"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pressly/goose/v3"
-	"gopkg.in/yaml.v3"
 
+	appmw "github.com/Seraf-seraf/mkk_test/internal/app/middlewares"
 	"github.com/Seraf-seraf/mkk_test/internal/config"
+	httpserver "github.com/Seraf-seraf/mkk_test/internal/pkg/http"
 	mysqlpkg "github.com/Seraf-seraf/mkk_test/internal/pkg/mysql"
 	redispkg "github.com/Seraf-seraf/mkk_test/internal/pkg/redis"
 )
 
 const (
-	openAPISpecPath       = "api/openapi.yml"
 	schemaMigrationsDir   = "internal/migrations/schema"
 	dataMigrationsDir     = "internal/migrations/data"
 	schemaMigrationsTable = "goose_db_version"
@@ -59,21 +53,21 @@ func New(cfg *config.Config) (*http.Server, ShutdownFunc, error) {
 		}
 	}
 
-	router := gin.New()
-	router.Use(gin.Recovery())
-
-	if cfg.Metrics.Enabled {
-		registerMetrics(router, cfg.Metrics.Path)
-	}
-
-	if err := registerOpenAPI(router); err != nil {
+	publicMW, apiMW, err := buildAPIMiddlewares(cfg)
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
 		return nil, nil, fmt.Errorf("%s: %w", methodCtx, err)
 	}
 
-	addr := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
-	server := &http.Server{
-		Addr:    addr,
-		Handler: router,
+	server, err := httpserver.New(cfg, httpserver.Deps{Redis: redisClient}, httpserver.ServerOptions{
+		PublicGroupMW: publicMW,
+		APIGroupMW:    apiMW,
+	})
+	if err != nil {
+		_ = redisClient.Close()
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("%s: %w", methodCtx, err)
 	}
 
 	shutdown := func(ctx context.Context) error {
@@ -93,66 +87,23 @@ func New(cfg *config.Config) (*http.Server, ShutdownFunc, error) {
 	return server, shutdown, nil
 }
 
-func registerMetrics(router *gin.Engine, path string) {
-	const methodCtx = "app.registerMetrics"
+func buildAPIMiddlewares(cfg *config.Config) ([]gin.HandlerFunc, []gin.HandlerFunc, error) {
+	const methodCtx = "app.buildAPIMiddlewares"
 
-	if path == "" {
-		path = "/metrics"
-	}
-
-	slog.Debug("регистрация метрик", slog.String("context", methodCtx), slog.String("path", path))
-
-	router.GET(path, func(c *gin.Context) {
-		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		c.String(http.StatusOK, "app_up 1\n")
-	})
-}
-
-func registerOpenAPI(router *gin.Engine) error {
-	const methodCtx = "app.registerOpenAPI"
-
-	spec, err := loadOpenAPISpec(openAPISpecPath)
+	validator, err := appmw.OapiRequestValidator("api/openapi.yml")
 	if err != nil {
-		return fmt.Errorf("%s: %w", methodCtx, err)
+		return nil, nil, fmt.Errorf("%s: %w", methodCtx, err)
 	}
 
-	slog.Debug("регистрация openapi.json", slog.String("context", methodCtx))
-
-	router.GET("/openapi.json", func(c *gin.Context) {
-		c.Header("Content-Type", "application/json; charset=utf-8")
-		c.Writer.WriteHeader(http.StatusOK)
-		_, _ = c.Writer.Write(spec)
-	})
-
-	return nil
-}
-
-func loadOpenAPISpec(path string) ([]byte, error) {
-	const methodCtx = "app.loadOpenAPISpec"
-
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%s: спецификация OpenAPI не найдена: %s", methodCtx, path)
-		}
-		return nil, fmt.Errorf("%s: ошибка проверки файла спецификации: %w", methodCtx, err)
-	}
-
-	data, err := os.ReadFile(filepath.Clean(path))
+	jwtValidator, err := appmw.NewJWTValidator(cfg.Auth.JWT)
 	if err != nil {
-		return nil, fmt.Errorf("%s: ошибка чтения спецификации: %w", methodCtx, err)
+		return nil, nil, fmt.Errorf("%s: %w", methodCtx, err)
 	}
 
-	var doc interface{}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("%s: ошибка разбора спецификации: %w", methodCtx, err)
-	}
+	publicMW := []gin.HandlerFunc{validator}
+	apiMW := []gin.HandlerFunc{validator, appmw.JWT(jwtValidator)}
 
-	jsonData, err := json.Marshal(doc)
-	if err != nil {
-		return nil, fmt.Errorf("%s: ошибка сериализации спецификации: %w", methodCtx, err)
-	}
-
-	return jsonData, nil
+	return publicMW, apiMW, nil
 }
 
 func runMigrations(db *sql.DB) error {

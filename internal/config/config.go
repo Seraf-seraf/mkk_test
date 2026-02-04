@@ -17,6 +17,7 @@ type Config struct {
 	Metrics    MetricsConfig    `yaml:"metrics"`
 	Slogger    SloggerConfig    `yaml:"slogger"`
 	Migrations MigrationsConfig `yaml:"migrations"`
+	Auth       AuthConfig       `yaml:"auth"`
 }
 
 type ServerConfig struct {
@@ -65,6 +66,15 @@ type SloggerConfig struct {
 
 type MigrationsConfig struct {
 	Auto bool `yaml:"auto"`
+}
+
+type AuthConfig struct {
+	JWT JWTConfig `yaml:"jwt"`
+}
+
+type JWTConfig struct {
+	Secret           string `yaml:"secret"`
+	AccessTTLMinutes int    `yaml:"access_ttl_minutes"`
 }
 
 // Load читает и парсит YAML конфигурацию. Если путь пустой, используется DefaultPath.

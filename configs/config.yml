@@ -33,3 +33,8 @@ slogger:
 
 migrations:
   auto: true
+
+auth:
+  jwt:
+    secret: change-me
+    access_ttl_minutes: 30
