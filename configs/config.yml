@@ -38,3 +38,12 @@ auth:
   jwt:
     secret: change-me
     access_ttl_minutes: 30
+
+mailer:
+  host: localhost
+  port: 25
+  user: ""
+  password: ""
+  from: "noreply@example.com"
+  tls: false
+  timeout_seconds: 10

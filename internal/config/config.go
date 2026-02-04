@@ -18,6 +18,7 @@ type Config struct {
 	Slogger    SloggerConfig    `yaml:"slogger"`
 	Migrations MigrationsConfig `yaml:"migrations"`
 	Auth       AuthConfig       `yaml:"auth"`
+	Mailer     MailerConfig     `yaml:"mailer"`
 }
 
 type ServerConfig struct {
@@ -75,6 +76,16 @@ type AuthConfig struct {
 type JWTConfig struct {
 	Secret           string `yaml:"secret"`
 	AccessTTLMinutes int    `yaml:"access_ttl_minutes"`
+}
+
+type MailerConfig struct {
+	Host           string `yaml:"host"`
+	Port           int    `yaml:"port"`
+	User           string `yaml:"user"`
+	Password       string `yaml:"password"`
+	From           string `yaml:"from"`
+	TLS            bool   `yaml:"tls"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 // Load читает и парсит YAML конфигурацию. Если путь пустой, используется DefaultPath.

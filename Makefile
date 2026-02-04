@@ -3,7 +3,7 @@ COMPOSE_FILE := deployments/docker-compose.yml
 -include .env
 export
 
-.PHONY: up down migrate-schema-up migrate-schema-down migrate-data-up migrate-data-down migrate-status migrate-data-status generate
+.PHONY: up down migrate-schema-up migrate-schema-down migrate-data-up migrate-data-down migrate-status migrate-data-status generate test test-cover
 
 up:
 	docker compose -f $(COMPOSE_FILE) up -d --build
@@ -31,3 +31,10 @@ migrate-data-status:
 
 generate:
 	$(OAPI_CODEGEN_BIN) -config $(OAPI_CODEGEN_CONFIG) $(OAPI_SPEC)
+
+test:
+	go test ./...
+
+test-cover:
+	go test ./... -coverprofile=coverage.out
+	go tool cover -func=coverage.out | tail -n 1
