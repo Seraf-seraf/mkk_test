@@ -3,7 +3,7 @@ COMPOSE_FILE := deployments/docker-compose.yml
 -include .env
 export
 
-.PHONY: up down migrate-schema-up migrate-schema-down migrate-data-up migrate-data-down migrate-status migrate-data-status
+.PHONY: up down migrate-schema-up migrate-schema-down migrate-data-up migrate-data-down migrate-status migrate-data-status generate
 
 up:
 	docker compose -f $(COMPOSE_FILE) up -d --build
@@ -28,3 +28,6 @@ migrate-status:
 
 migrate-data-status:
 	$(GOOSE_BIN) -dir $(GOOSE_DATA_DIR) -table $(GOOSE_DATA_TABLE) mysql "$(DB_DSN)" status
+
+generate:
+	$(OAPI_CODEGEN_BIN) -config $(OAPI_CODEGEN_CONFIG) $(OAPI_SPEC)
