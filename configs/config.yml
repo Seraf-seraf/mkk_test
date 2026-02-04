@@ -5,17 +5,31 @@ server:
 mysql:
   host: mysql
   port: 3306
-  database: ${MYSQL_DATABASE:-admin}
-  user: ${MYSQL_USER:-admin}
-  password: ${MYSQL_PASSWORD:-admin}
+  database: admin
+  user: admin
+  password: secret
+  pool:
+    max_open_conns: 25
+    max_idle_conns: 25
+    conn_max_lifetime_seconds: 300
+    conn_max_idle_time_seconds: 60
 
 redis:
   host: redis
   port: 6379
+  pool:
+    size: 10
+    timeout_seconds: 30
 
 metrics:
   enabled: true
   path: /metrics
+
+slogger:
+  level: info
+  format: json
+  add_source: true
+  output: stdout
 
 migrations:
   auto: true

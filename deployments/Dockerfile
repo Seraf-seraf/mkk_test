@@ -16,8 +16,9 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --from=builder /out/app /app/app
-
-ENV CONFIG_PATH=/etc/app/config.yml
+COPY api/openapi.yml /app/api/openapi.yml
+COPY internal/migrations /app/internal/migrations
+COPY configs/config.yml /app/configs/config.yml
 
 EXPOSE 8080
 
