@@ -1,0 +1,801 @@
+openapi: 3.0.3
+info:
+  title: API управления задачами
+  version: 1.0.0
+  description: REST API для управления задачами в командах с ролевой моделью, историей изменений и отчетами.
+
+servers:
+  - url: "http://localhost:8080"
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+    description: Регистрация и аутентификация
+  - name: teams
+    description: Управление командами и приглашениями
+  - name: tasks
+    description: Управление задачами и историей изменений
+  - name: comments
+    description: Комментарии к задачам
+  - name: reports
+    description: Отчеты
+
+paths:
+  /api/v1/register:
+    post:
+      tags: [auth]
+      summary: Регистрация пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/login:
+    post:
+      tags: [auth]
+      summary: Вход и получение JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/teams:
+    post:
+      tags: [teams]
+      summary: Создать команду (пользователь становится owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTeamRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [teams]
+      summary: Список команд, где состоит пользователь
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/teams/{id}/invite:
+    post:
+      tags: [teams]
+      summary: Пригласить пользователя в команду (owner/admin)
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+      x-roles: [owner, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/teams/invites/accept:
+    post:
+      tags: [teams]
+      summary: Принять приглашение по коду
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteRequest'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/tasks:
+    post:
+      tags: [tasks]
+      summary: Создать задачу (только член команды)
+      x-roles: [member, admin, owner]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [tasks]
+      summary: Список задач с фильтрами и пагинацией
+      parameters:
+        - name: team_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: assignee_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/tasks/{id}:
+    put:
+      tags: [tasks]
+      summary: Обновить задачу (проверка прав)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/tasks/{id}/history:
+    get:
+      tags: [tasks]
+      summary: История изменений задачи
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHistoryListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/tasks/{id}/comments:
+    post:
+      tags: [comments]
+      summary: Добавить комментарий к задаче
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [comments]
+      summary: Список комментариев задачи
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/tasks/{id}/comments/{comment_id}:
+    put:
+      tags: [comments]
+      summary: Обновить комментарий
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/CommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommentRequest'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [comments]
+      summary: Удалить комментарий
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/reports/team-summary:
+    get:
+      tags: [reports]
+      summary: Отчет по командам (кол-во участников, done за 7 дней)
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/reports/top-creators:
+    get:
+      tags: [reports]
+      summary: Топ-3 пользователей по созданным задачам за месяц
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+          description: Месяц в формате YYYY-MM
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamTopCreators'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/reports/invalid-assignees:
+    get:
+      tags: [reports]
+      summary: Задачи, где assignee не состоит в команде
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvalidAssignee'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TeamId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    CommentId:
+      name: comment_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Доступ запрещен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    CreateTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    InviteRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    AcceptInviteRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    CreateTaskRequest:
+      type: object
+      required: [team_id, title]
+      properties:
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        assignee_id:
+          $ref: '#/components/schemas/UUID'
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        assignee_id:
+          $ref: '#/components/schemas/UUID'
+
+    TaskStatus:
+      type: string
+      enum: [todo, in_progress, done]
+
+    User:
+      type: object
+      required: [id, email, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+
+    Team:
+      type: object
+      required: [id, name, created_by, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          type: string
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        created_at:
+          type: string
+          format: date-time
+
+    TeamMember:
+      type: object
+      required: [team_id, user_id, role, created_at]
+      properties:
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        role:
+          type: string
+          enum: [owner, admin, member]
+        created_at:
+          type: string
+          format: date-time
+
+    Invite:
+      type: object
+      required: [id, team_id, email, inviter_id, code, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        email:
+          type: string
+          format: email
+        inviter_id:
+          $ref: '#/components/schemas/UUID'
+        code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      required: [id, team_id, title, status, created_by, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        assignee_id:
+          $ref: '#/components/schemas/UUID'
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    TaskHistory:
+      type: object
+      required: [id, task_id, changed_by, changes, changed_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        task_id:
+          $ref: '#/components/schemas/UUID'
+        changed_by:
+          $ref: '#/components/schemas/UUID'
+        changes:
+          type: object
+          additionalProperties: true
+        changed_at:
+          type: string
+          format: date-time
+
+    TaskHistoryListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskHistory'
+
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+
+    UpdateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+
+    Comment:
+      type: object
+      required: [id, task_id, user_id, body, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        task_id:
+          $ref: '#/components/schemas/UUID'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CommentsListResponse:
+      type: object
+      required: [items, page, per_page, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+
+    TasksListResponse:
+      type: object
+      required: [items, page, per_page, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+
+    TeamsListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Team'
+
+    TeamSummary:
+      type: object
+      required: [team_id, team_name, members_count, done_last_7d]
+      properties:
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        team_name:
+          type: string
+        members_count:
+          type: integer
+        done_last_7d:
+          type: integer
+
+    TeamTopCreators:
+      type: object
+      required: [team_id, team_name, creators]
+      properties:
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        team_name:
+          type: string
+        creators:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserTaskCount'
+
+    UserTaskCount:
+      type: object
+      required: [user_id, tasks_created]
+      properties:
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        tasks_created:
+          type: integer
+
+    InvalidAssignee:
+      type: object
+      required: [task_id, team_id, assignee_id]
+      properties:
+        task_id:
+          $ref: '#/components/schemas/UUID'
+        team_id:
+          $ref: '#/components/schemas/UUID'
+        assignee_id:
+          $ref: '#/components/schemas/UUID'
