@@ -15,8 +15,10 @@ import (
 	"github.com/pressly/goose/v3"
 	libredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	rediscontainer "github.com/testcontainers/testcontainers-go/modules/redis"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/Seraf-seraf/mkk_test/internal/config"
 	httpserver "github.com/Seraf-seraf/mkk_test/internal/pkg/http"
@@ -40,6 +42,8 @@ type IntegrationSuite struct {
 func (s *IntegrationSuite) SetupSuite() {
 	const methodCtx = "tests.IntegrationSuite.SetupSuite"
 
+	testcontainers.SkipIfProviderIsNotHealthy(s.T())
+
 	s.ctx = context.Background()
 
 	root, err := findRepoRoot()
@@ -55,6 +59,7 @@ func (s *IntegrationSuite) SetupSuite() {
 		mysql.WithDatabase("testdb"),
 		mysql.WithUsername("test"),
 		mysql.WithPassword("test"),
+		testcontainers.WithWaitStrategy(wait.ForLog("port: 3306  MySQL Community Server").WithStartupTimeout(2*time.Minute)),
 	)
 	s.Require().NoError(err, methodCtx)
 
@@ -81,7 +86,6 @@ func (s *IntegrationSuite) SetupSuite() {
 
 	s.Config = s.buildConfig(dsn, redisOpts.Addr)
 
-	s.startServer()
 }
 
 func (s *IntegrationSuite) TearDownSuite() {
@@ -166,10 +170,10 @@ func (s *IntegrationSuite) buildConfig(dsn string, redisAddr string) *config.Con
 	}
 }
 
-func (s *IntegrationSuite) startServer() {
-	const methodCtx = "tests.IntegrationSuite.startServer"
+func (s *IntegrationSuite) StartHTTPServer(opts httpserver.ServerOptions) {
+	const methodCtx = "tests.IntegrationSuite.StartHTTPServer"
 
-	server, err := httpserver.New(s.Config, httpserver.Deps{Redis: s.Redis}, httpserver.ServerOptions{})
+	server, err := httpserver.New(s.Config, httpserver.Deps{Redis: s.Redis}, opts)
 	s.Require().NoError(err, methodCtx)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

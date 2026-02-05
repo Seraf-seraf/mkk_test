@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"golang.org/x/crypto/bcrypt"
 
@@ -25,9 +26,15 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (repomysql.UserRecord, error)
 }
 
+// RoleRepository описывает доступ к ролям пользователя.
+type RoleRepository interface {
+	GetHighestRoleByUser(ctx context.Context, userID uuid.UUID) (string, bool, error)
+}
+
 // Service реализует регистрацию и вход.
 type Service struct {
 	repo      UserRepository
+	roles     RoleRepository
 	mailer    mailer.Mailer
 	breaker   breaker.Breaker
 	jwtSecret []byte
@@ -36,11 +43,14 @@ type Service struct {
 }
 
 // NewService создает AuthService.
-func NewService(repo UserRepository, mailer mailer.Mailer, breaker breaker.Breaker, cfg config.JWTConfig) (*Service, error) {
+func NewService(repo UserRepository, roles RoleRepository, mailer mailer.Mailer, breaker breaker.Breaker, cfg config.JWTConfig) (*Service, error) {
 	const methodCtx = "auth.NewService"
 
 	if repo == nil {
 		return nil, fmt.Errorf("%s: repo не задан", methodCtx)
+	}
+	if roles == nil {
+		return nil, fmt.Errorf("%s: roles repo не задан", methodCtx)
 	}
 	if cfg.Secret == "" {
 		return nil, fmt.Errorf("%s: secret не задан", methodCtx)
@@ -53,6 +63,7 @@ func NewService(repo UserRepository, mailer mailer.Mailer, breaker breaker.Break
 
 	return &Service{
 		repo:      repo,
+		roles:     roles,
 		mailer:    mailer,
 		breaker:   breaker,
 		jwtSecret: []byte(cfg.Secret),
@@ -123,7 +134,7 @@ func (s *Service) Login(ctx context.Context, req api.LoginRequest) (api.AuthResp
 		return api.AuthResponse{}, fmt.Errorf("%s: %w", methodCtx, ErrInvalidCredentials)
 	}
 
-	token, err := s.generateToken(record)
+	token, err := s.generateToken(ctx, record)
 	if err != nil {
 		return api.AuthResponse{}, fmt.Errorf("%s: %w", methodCtx, err)
 	}
@@ -137,8 +148,19 @@ func (s *Service) Login(ctx context.Context, req api.LoginRequest) (api.AuthResp
 	return api.AuthResponse{Token: token, User: user}, nil
 }
 
-func (s *Service) generateToken(user repomysql.UserRecord) (string, error) {
+func (s *Service) generateToken(ctx context.Context, user repomysql.UserRecord) (string, error) {
 	const methodCtx = "auth.Service.generateToken"
+
+	role := defaultRole
+	if s.roles != nil {
+		roleValue, ok, err := s.roles.GetHighestRoleByUser(ctx, user.ID)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", methodCtx, err)
+		}
+		if ok && roleValue != "" {
+			role = roleValue
+		}
+	}
 
 	now := s.now().UTC()
 	claims := &jwt.RegisteredClaims{
@@ -151,7 +173,7 @@ func (s *Service) generateToken(user repomysql.UserRecord) (string, error) {
 		Role string `json:"role"`
 		*jwt.RegisteredClaims
 	}{
-		Role:             defaultRole,
+		Role:             role,
 		RegisteredClaims: claims,
 	}
 

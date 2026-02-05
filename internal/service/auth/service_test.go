@@ -48,7 +48,8 @@ func (s *AuthSuite) SetupTest() {
 	s.Require().NoError(err, methodCtx)
 
 	s.repo = repomysql.NewUsersRepo(s.DB)
-	s.service, err = NewService(s.repo, s.mailer, cb, s.Config.Auth.JWT)
+	membersRepo := repomysql.NewTeamMembersRepo(s.DB)
+	s.service, err = NewService(s.repo, membersRepo, s.mailer, cb, s.Config.Auth.JWT)
 	s.Require().NoError(err, methodCtx)
 }
 

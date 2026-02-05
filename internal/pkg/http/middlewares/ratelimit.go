@@ -7,10 +7,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	libredis "github.com/redis/go-redis/v9"
 	limiterlib "github.com/ulule/limiter/v3"
 	ginmiddleware "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	"github.com/ulule/limiter/v3/drivers/store/redis"
+
+	appmw "github.com/Seraf-seraf/mkk_test/internal/app/middlewares"
 )
 
 const (
@@ -47,7 +50,17 @@ func RateLimit(limiter *limiterlib.Limiter) gin.HandlerFunc {
 	return ginmiddleware.NewMiddleware(
 		limiter,
 		ginmiddleware.WithKeyGetter(func(c *gin.Context) string {
-			return c.ClientIP()
+			if val, ok := c.Get(appmw.ContextUserKey); ok {
+				switch v := val.(type) {
+				case string:
+					if v != "" {
+						return "user:" + v
+					}
+				case uuid.UUID:
+					return "user:" + v.String()
+				}
+			}
+			return "ip:" + c.ClientIP()
 		}),
 		ginmiddleware.WithLimitReachedHandler(func(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{

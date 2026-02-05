@@ -54,15 +54,15 @@ func New(cfg *config.Config, deps Deps, opts ServerOptions) (*nethttp.Server, er
 
 	router.Use(middlewares.CORS())
 
+	if len(opts.Middlewares) > 0 {
+		router.Use(opts.Middlewares...)
+	}
+
 	limiter, err := middlewares.NewRateLimiter(deps.Redis)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", methodCtx, err)
 	}
 	router.Use(middlewares.RateLimit(limiter))
-
-	if len(opts.Middlewares) > 0 {
-		router.Use(opts.Middlewares...)
-	}
 
 	if cfg.Metrics.Enabled {
 		metricsPath := cfg.Metrics.Path
