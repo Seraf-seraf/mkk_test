@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	sqlmysql "github.com/go-sql-driver/mysql"
 	"github.com/pressly/goose/v3"
 	libredis "github.com/redis/go-redis/v9"
@@ -59,7 +60,11 @@ func (s *IntegrationSuite) SetupSuite() {
 		mysql.WithDatabase("testdb"),
 		mysql.WithUsername("test"),
 		mysql.WithPassword("test"),
-		testcontainers.WithWaitStrategy(wait.ForLog("port: 3306  MySQL Community Server").WithStartupTimeout(2*time.Minute)),
+		testcontainers.WithWaitStrategy(
+			wait.ForSQL(nat.Port("3306/tcp"), "mysql", func(host string, port nat.Port) string {
+				return fmt.Sprintf("test:test@tcp(%s:%s)/testdb?parseTime=true&multiStatements=true", host, port.Port())
+			}).WithStartupTimeout(2*time.Minute),
+		),
 	)
 	s.Require().NoError(err, methodCtx)
 

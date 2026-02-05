@@ -74,8 +74,8 @@ func (s *TasksSuite) TestCreateTaskMember() {
 	resp, err := s.service.Create(ctx, s.memberID, req)
 	s.Require().NoError(err, methodCtx)
 	s.Equal("New Task", resp.Title)
-	s.Equal(s.teamID, uuid.UUID(resp.TeamId))
-	s.Equal(s.memberID, uuid.UUID(resp.CreatedBy))
+	s.Equal(s.teamID, resp.TeamId)
+	s.Equal(s.memberID, resp.CreatedBy)
 
 	var status string
 	var createdBy string
@@ -128,7 +128,7 @@ func (s *TasksSuite) TestCreateTaskWithAssignee() {
 	resp, err := s.service.Create(ctx, s.ownerID, req)
 	s.Require().NoError(err, methodCtx)
 	s.NotNil(resp.AssigneeId)
-	s.Equal(s.memberID, uuid.UUID(*resp.AssigneeId))
+	s.Equal(s.memberID, *resp.AssigneeId)
 }
 
 func (s *TasksSuite) TestListTasksFilters() {
@@ -225,7 +225,7 @@ func (s *TasksSuite) TestUpdateTaskAndHistory() {
 	resp, err := s.service.Update(ctx, s.memberID, taskID, req)
 	s.Require().NoError(err, methodCtx)
 	s.Equal("new", resp.Title)
-	s.Equal("done", string(resp.Status))
+	s.Equal(api.TaskStatus("done"), resp.Status)
 
 	var count int
 	err = s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM task_history WHERE task_id = ?", taskID.String()).Scan(&count)

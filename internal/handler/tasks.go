@@ -86,7 +86,7 @@ func (h *Handler) PutApiV1TasksId(c *gin.Context, id api.TaskId) {
 		return
 	}
 
-	resp, err := h.tasks.Update(c.Request.Context(), userID, uuid.UUID(id), req)
+	resp, err := h.tasks.Update(c.Request.Context(), userID, id, req)
 	if err != nil {
 		writeError(c, err, methodCtx)
 		return

@@ -69,8 +69,8 @@ func (s *CommentsSuite) TestCreateCommentMember() {
 	resp, err := s.service.Create(ctx, s.memberID, s.taskID, req)
 	s.Require().NoError(err, methodCtx)
 	s.Equal("hello", resp.Body)
-	s.Equal(s.taskID, uuid.UUID(resp.TaskId))
-	s.Equal(s.memberID, uuid.UUID(resp.UserId))
+	s.Equal(s.taskID, resp.TaskId)
+	s.Equal(s.memberID, resp.UserId)
 }
 
 func (s *CommentsSuite) TestCreateCommentForbidden() {

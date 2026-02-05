@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/Seraf-seraf/mkk_test/internal/api"
@@ -75,7 +76,7 @@ func (s *TeamsSuite) TestCreateTeam() {
 	resp, err := s.service.CreateTeam(ctx, s.ownerID, api.CreateTeamRequest{Name: "New Team"})
 	s.Require().NoError(err, methodCtx)
 	s.Equal("New Team", resp.Name)
-	s.Equal(s.ownerID, uuid.UUID(resp.CreatedBy))
+	s.Equal(s.ownerID, resp.CreatedBy)
 
 	var role string
 	err = s.DB.QueryRowContext(
@@ -101,7 +102,7 @@ func (s *TeamsSuite) TestListTeams() {
 
 	ids := map[uuid.UUID]struct{}{}
 	for _, team := range resp.Items {
-		ids[uuid.UUID(team.Id)] = struct{}{}
+		ids[team.Id] = struct{}{}
 	}
 
 	_, hasFirst := ids[s.teamID]
@@ -117,7 +118,7 @@ func (s *TeamsSuite) TestInviteByOwner() {
 	resp, err := s.service.Invite(ctx, s.ownerID, s.teamID, api.InviteRequest{Email: "invitee@example.com"})
 	s.Require().NoError(err, methodCtx)
 	s.NotEmpty(resp.Code)
-	s.Equal("invitee@example.com", string(resp.Email))
+	s.Equal(openapi_types.Email("invitee@example.com"), resp.Email)
 
 	var count int
 	err = s.DB.QueryRowContext(
@@ -178,9 +179,9 @@ func (s *TeamsSuite) TestAcceptInvite() {
 
 	resp, err := s.service.AcceptInvite(ctx, inviteUserID, api.AcceptInviteRequest{Code: code})
 	s.Require().NoError(err, methodCtx)
-	s.Equal(s.teamID, uuid.UUID(resp.TeamId))
-	s.Equal(inviteUserID, uuid.UUID(resp.UserId))
-	s.Equal("member", string(resp.Role))
+	s.Equal(s.teamID, resp.TeamId)
+	s.Equal(inviteUserID, resp.UserId)
+	s.Equal(api.TeamMemberRole("member"), resp.Role)
 
 	var count int
 	err = s.DB.QueryRowContext(

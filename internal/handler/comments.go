@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/Seraf-seraf/mkk_test/internal/api"
 )
@@ -28,7 +27,7 @@ func (h *Handler) GetApiV1TasksIdComments(c *gin.Context, id api.TaskId, params 
 		perPage = *params.PerPage
 	}
 
-	resp, err := h.comments.List(c.Request.Context(), userID, uuid.UUID(id), page, perPage)
+	resp, err := h.comments.List(c.Request.Context(), userID, id, page, perPage)
 	if err != nil {
 		writeError(c, err, methodCtx)
 		return
@@ -53,7 +52,7 @@ func (h *Handler) PostApiV1TasksIdComments(c *gin.Context, id api.TaskId) {
 		return
 	}
 
-	resp, err := h.comments.Create(c.Request.Context(), userID, uuid.UUID(id), req)
+	resp, err := h.comments.Create(c.Request.Context(), userID, id, req)
 	if err != nil {
 		writeError(c, err, methodCtx)
 		return
@@ -78,7 +77,7 @@ func (h *Handler) PutApiV1TasksIdCommentsCommentId(c *gin.Context, id api.TaskId
 		return
 	}
 
-	resp, err := h.comments.Update(c.Request.Context(), userID, uuid.UUID(id), uuid.UUID(commentId), req)
+	resp, err := h.comments.Update(c.Request.Context(), userID, id, commentId, req)
 	if err != nil {
 		writeError(c, err, methodCtx)
 		return
@@ -97,7 +96,7 @@ func (h *Handler) DeleteApiV1TasksIdCommentsCommentId(c *gin.Context, id api.Tas
 		return
 	}
 
-	if err := h.comments.Delete(c.Request.Context(), userID, uuid.UUID(id), uuid.UUID(commentId)); err != nil {
+	if err := h.comments.Delete(c.Request.Context(), userID, id, commentId); err != nil {
 		writeError(c, err, methodCtx)
 		return
 	}

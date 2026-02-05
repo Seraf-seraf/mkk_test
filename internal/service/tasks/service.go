@@ -93,7 +93,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req api.CreateTa
 
 	var assigneePtr *uuid.UUID
 	if req.AssigneeId != nil {
-		assigneeID := uuid.UUID(*req.AssigneeId)
+		assigneeID := *req.AssigneeId
 		ok, err := s.members.IsMember(ctx, req.TeamId, assigneeID)
 		if err != nil {
 			return api.Task{}, fmt.Errorf("%s: %w", methodCtx, err)
@@ -119,7 +119,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req api.CreateTa
 
 	record := repomysql.TaskRecord{
 		ID:          taskID,
-		TeamID:      uuid.UUID(req.TeamId),
+		TeamID:      req.TeamId,
 		Title:       req.Title,
 		Description: req.Description,
 		Status:      string(status),
@@ -234,7 +234,7 @@ func (s *Service) Update(ctx context.Context, userID uuid.UUID, taskID uuid.UUID
 
 	newAssignee := current.AssigneeID
 	if req.AssigneeId != nil {
-		assigneeUUID := uuid.UUID(*req.AssigneeId)
+		assigneeUUID := *req.AssigneeId
 		ok, err := s.members.IsMember(ctx, current.TeamID, assigneeUUID)
 		if err != nil {
 			return api.Task{}, fmt.Errorf("%s: %w", methodCtx, err)
@@ -358,13 +358,13 @@ func buildFilter(teamID uuid.UUID, status *api.TaskStatus, assigneeID *uuid.UUID
 
 func taskToAPI(record repomysql.TaskRecord) api.Task {
 	return api.Task{
-		Id:          api.UUID(record.ID),
-		TeamId:      api.UUID(record.TeamID),
+		Id:          record.ID,
+		TeamId:      record.TeamID,
 		Title:       record.Title,
 		Description: record.Description,
 		Status:      api.TaskStatus(record.Status),
 		AssigneeId:  toAPUUIDPtr(record.AssigneeID),
-		CreatedBy:   api.UUID(record.CreatedBy),
+		CreatedBy:   record.CreatedBy,
 		CreatedAt:   record.CreatedAt,
 		UpdatedAt:   record.UpdatedAt,
 		CompletedAt: record.CompletedAt,

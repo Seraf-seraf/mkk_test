@@ -85,7 +85,7 @@ func (s *ReportsSuite) TestTeamSummary() {
 		teamCounts[item.TeamName] = struct {
 			members int
 			done7d  int
-		}{members: int(item.MembersCount), done7d: int(item.DoneLast7d)}
+		}{members: item.MembersCount, done7d: item.DoneLast7d}
 	}
 
 	s.Require().Contains(teamCounts, "Alpha", methodCtx)
@@ -136,7 +136,7 @@ func (s *ReportsSuite) TestTopCreators() {
 		if item.TeamId.String() == s.teamAID.String() {
 			counts := map[uuid.UUID]int{}
 			for _, creator := range item.Creators {
-				counts[uuid.UUID(creator.UserId)] = int(creator.TasksCreated)
+				counts[creator.UserId] = creator.TasksCreated
 			}
 			alpha = &struct{ creators map[uuid.UUID]int }{creators: counts}
 			break
