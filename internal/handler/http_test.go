@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,6 +45,8 @@ func (s *HTTPSuite) SetupSuite() {
 	const methodCtx = "handler.HTTPSuite.SetupSuite"
 
 	s.IntegrationSuite.SetupSuite()
+	s.Config.Metrics.Enabled = true
+	s.Config.Metrics.Path = "/metrics"
 	s.startServer()
 	s.waitForServer(methodCtx)
 }
@@ -265,6 +268,281 @@ func (s *HTTPSuite) TestTasksAndCommentsFlow() {
 	var comment api.Comment
 	require.NoError(s.T(), json.Unmarshal(body, &comment), methodCtx)
 	require.Equal(s.T(), "Комментарий", comment.Body, methodCtx)
+}
+
+func (s *HTTPSuite) TestTeamsCreateAndList() {
+	const methodCtx = "handler.HTTPSuite.TestTeamsCreateAndList"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	userID := s.CreateUser("teams-user@example.com")
+	token := s.buildToken(userID.String(), "member")
+
+	createReq := api.CreateTeamRequest{Name: "Команда A"}
+	resp, body := s.doJSON(http.MethodPost, "/api/v1/teams", token, createReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var created api.Team
+	require.NoError(s.T(), json.Unmarshal(body, &created), methodCtx)
+	require.Equal(s.T(), "Команда A", created.Name, methodCtx)
+	require.Equal(s.T(), userID, created.CreatedBy, methodCtx)
+
+	resp, body = s.doJSON(http.MethodGet, "/api/v1/teams", token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var list api.TeamsListResponse
+	require.NoError(s.T(), json.Unmarshal(body, &list), methodCtx)
+	found := false
+	for _, team := range list.Items {
+		if team.Id == created.Id {
+			found = true
+			break
+		}
+	}
+	require.True(s.T(), found, methodCtx)
+}
+
+func (s *HTTPSuite) TestInviteAcceptFlow() {
+	const methodCtx = "handler.HTTPSuite.TestInviteAcceptFlow"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	ownerID := s.CreateUser("owner-invite@example.com")
+	teamID := s.CreateTeam("Invite Team", ownerID)
+	s.AddTeamMember(teamID, ownerID, "owner")
+
+	ownerToken := s.buildToken(ownerID.String(), "owner")
+	inviteReq := api.InviteRequest{Email: "invitee@example.com"}
+	invitePath := fmt.Sprintf("/api/v1/teams/%s/invite", teamID.String())
+	resp, body := s.doJSON(http.MethodPost, invitePath, ownerToken, inviteReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var invite api.Invite
+	require.NoError(s.T(), json.Unmarshal(body, &invite), methodCtx)
+	require.NotEmpty(s.T(), invite.Code, methodCtx)
+
+	inviteeID := s.CreateUser("invitee@example.com")
+	inviteeToken := s.buildToken(inviteeID.String(), "member")
+	acceptReq := api.AcceptInviteRequest{Code: invite.Code}
+	resp, body = s.doJSON(http.MethodPost, "/api/v1/teams/invites/accept", inviteeToken, acceptReq)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var member api.TeamMember
+	require.NoError(s.T(), json.Unmarshal(body, &member), methodCtx)
+	require.Equal(s.T(), teamID, member.TeamId, methodCtx)
+	require.Equal(s.T(), inviteeID, member.UserId, methodCtx)
+	require.Equal(s.T(), api.TeamMemberRole("member"), member.Role, methodCtx)
+
+	var count int
+	err := s.DB.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM team_invites WHERE code = ?", invite.Code).Scan(&count)
+	require.NoError(s.T(), err, methodCtx)
+	require.Equal(s.T(), 0, count, methodCtx)
+}
+
+func (s *HTTPSuite) TestTaskUpdateAndHistory() {
+	const methodCtx = "handler.HTTPSuite.TestTaskUpdateAndHistory"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	userID := s.CreateUser("task-history@example.com")
+	teamID := s.CreateTeam("History Team", userID)
+	s.AddTeamMember(teamID, userID, "member")
+
+	token := s.buildToken(userID.String(), "member")
+	createReq := api.CreateTaskRequest{
+		TeamId: api.UUID(teamID),
+		Title:  "History Task",
+	}
+	resp, body := s.doJSON(http.MethodPost, "/api/v1/tasks", token, createReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var task api.Task
+	require.NoError(s.T(), json.Unmarshal(body, &task), methodCtx)
+
+	status := api.TaskStatus("done")
+	updateReq := api.UpdateTaskRequest{Status: &status}
+	updatePath := fmt.Sprintf("/api/v1/tasks/%s", task.Id.String())
+	resp, body = s.doJSON(http.MethodPut, updatePath, token, updateReq)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var updated api.Task
+	require.NoError(s.T(), json.Unmarshal(body, &updated), methodCtx)
+	require.Equal(s.T(), api.TaskStatus("done"), updated.Status, methodCtx)
+
+	historyPath := fmt.Sprintf("/api/v1/tasks/%s/history", task.Id.String())
+	resp, body = s.doJSON(http.MethodGet, historyPath, token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var history api.TaskHistoryListResponse
+	require.NoError(s.T(), json.Unmarshal(body, &history), methodCtx)
+	require.NotEmpty(s.T(), history.Items, methodCtx)
+}
+
+func (s *HTTPSuite) TestCommentsCRUD() {
+	const methodCtx = "handler.HTTPSuite.TestCommentsCRUD"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	userID := s.CreateUser("comments-crud@example.com")
+	teamID := s.CreateTeam("Comments Team", userID)
+	s.AddTeamMember(teamID, userID, "member")
+
+	token := s.buildToken(userID.String(), "member")
+	taskReq := api.CreateTaskRequest{TeamId: api.UUID(teamID), Title: "Task"}
+	resp, body := s.doJSON(http.MethodPost, "/api/v1/tasks", token, taskReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var task api.Task
+	require.NoError(s.T(), json.Unmarshal(body, &task), methodCtx)
+
+	commentReq := api.CreateCommentRequest{Body: "Первый"}
+	commentPath := fmt.Sprintf("/api/v1/tasks/%s/comments", task.Id.String())
+	resp, body = s.doJSON(http.MethodPost, commentPath, token, commentReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var comment api.Comment
+	require.NoError(s.T(), json.Unmarshal(body, &comment), methodCtx)
+
+	resp, body = s.doJSON(http.MethodGet, commentPath, token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var list api.CommentsListResponse
+	require.NoError(s.T(), json.Unmarshal(body, &list), methodCtx)
+	require.Len(s.T(), list.Items, 1, methodCtx)
+
+	updateReq := api.UpdateCommentRequest{Body: "Обновлено"}
+	updatePath := fmt.Sprintf("/api/v1/tasks/%s/comments/%s", task.Id.String(), comment.Id.String())
+	resp, body = s.doJSON(http.MethodPut, updatePath, token, updateReq)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	var updated api.Comment
+	require.NoError(s.T(), json.Unmarshal(body, &updated), methodCtx)
+	require.Equal(s.T(), "Обновлено", updated.Body, methodCtx)
+
+	resp, _ = s.doJSON(http.MethodDelete, updatePath, token, nil)
+	require.Equal(s.T(), http.StatusNoContent, resp.StatusCode, methodCtx)
+
+	resp, body = s.doJSON(http.MethodGet, commentPath, token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+
+	require.NoError(s.T(), json.Unmarshal(body, &list), methodCtx)
+	require.Len(s.T(), list.Items, 0, methodCtx)
+}
+
+func (s *HTTPSuite) TestReportsEndpoints() {
+	const methodCtx = "handler.HTTPSuite.TestReportsEndpoints"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	ownerID := s.CreateUser("reports-owner@example.com")
+	teamID := s.CreateTeam("Reports Team", ownerID)
+	s.AddTeamMember(teamID, ownerID, "owner")
+
+	s.CreateTask(teamID, ownerID, nil, "done", "T1", "")
+	s.CreateTask(teamID, ownerID, nil, "done", "T2", "")
+	s.CreateTask(teamID, ownerID, nil, "todo", "T3", "")
+
+	token := s.buildToken(ownerID.String(), "owner")
+
+	resp, body := s.doJSON(http.MethodGet, "/api/v1/reports/team-summary", token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+	var summary []api.TeamSummary
+	require.NoError(s.T(), json.Unmarshal(body, &summary), methodCtx)
+	require.NotEmpty(s.T(), summary, methodCtx)
+
+	month := time.Now().UTC().Format("2006-01")
+	resp, body = s.doJSON(http.MethodGet, "/api/v1/reports/top-creators?month="+month, token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+	var topCreators []api.TeamTopCreators
+	require.NoError(s.T(), json.Unmarshal(body, &topCreators), methodCtx)
+	require.NotEmpty(s.T(), topCreators, methodCtx)
+
+	resp, body = s.doJSON(http.MethodGet, "/api/v1/reports/invalid-assignees", token, nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+	var invalid []api.InvalidAssignee
+	require.NoError(s.T(), json.Unmarshal(body, &invalid), methodCtx)
+	require.Len(s.T(), invalid, 0, methodCtx)
+}
+
+func (s *HTTPSuite) TestErrorMappingInvalidAssignee() {
+	const methodCtx = "handler.HTTPSuite.TestErrorMappingInvalidAssignee"
+
+	s.TruncateTables(
+		"task_comments",
+		"task_history",
+		"tasks",
+		"team_invites",
+		"team_members",
+		"teams",
+		"users",
+	)
+
+	ownerID := s.CreateUser("assignee-owner@example.com")
+	outsiderID := s.CreateUser("assignee-outsider@example.com")
+	teamID := s.CreateTeam("Assignee Team", ownerID)
+	s.AddTeamMember(teamID, ownerID, "owner")
+
+	token := s.buildToken(ownerID.String(), "owner")
+	createReq := api.CreateTaskRequest{TeamId: api.UUID(teamID), Title: "Task"}
+	resp, body := s.doJSON(http.MethodPost, "/api/v1/tasks", token, createReq)
+	require.Equal(s.T(), http.StatusCreated, resp.StatusCode, methodCtx)
+
+	var task api.Task
+	require.NoError(s.T(), json.Unmarshal(body, &task), methodCtx)
+
+	assignee := api.UUID(outsiderID)
+	updateReq := api.UpdateTaskRequest{AssigneeId: &assignee}
+	updatePath := fmt.Sprintf("/api/v1/tasks/%s", task.Id.String())
+	resp, _ = s.doJSON(http.MethodPut, updatePath, token, updateReq)
+	require.Equal(s.T(), http.StatusBadRequest, resp.StatusCode, methodCtx)
+}
+
+func (s *HTTPSuite) TestMetricsEndpoint() {
+	const methodCtx = "handler.HTTPSuite.TestMetricsEndpoint"
+
+	resp, body := s.doJSON(http.MethodGet, "/metrics", "", nil)
+	require.Equal(s.T(), http.StatusOK, resp.StatusCode, methodCtx)
+	require.Contains(s.T(), string(body), "mkk_http_requests_total", methodCtx)
 }
 
 func (s *HTTPSuite) TestInviteRBAC() {
