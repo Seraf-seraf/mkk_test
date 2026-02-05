@@ -256,7 +256,7 @@ func (r *TasksRepo) GetTeamID(ctx context.Context, taskID uuid.UUID) (uuid.UUID,
 	return teamID, nil
 }
 
-func scanTaskRecord(scanner interface{
+func scanTaskRecord(scanner interface {
 	Scan(dest ...interface{}) error
 }) (TaskRecord, error) {
 	var record TaskRecord
